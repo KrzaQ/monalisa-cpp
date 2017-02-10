@@ -4,14 +4,26 @@
 #include <stdint.h>
 #include <time.h>
 
-const size_t W = 256;
-const size_t H = 382;
-const size_t SZ = W * H;
+#include <array>
+#include <random>
 
-uint8_t monalisa[SZ];
+constexpr size_t W = 256;
+constexpr size_t H = 382;
+constexpr size_t SZ = W * H;
 
-const size_t SPEC_CNT = 300;
-const size_t BEST_CNT = 2;
+const auto monalisa = []{
+  std::array<uint8_t, SZ> ret;
+  FILE *f = fopen("mona_small_gray.raw", "rb");
+  fread(ret.data(), SZ, 1, f);
+  fclose(f);
+  return ret;
+}();
+
+constexpr size_t SPEC_CNT = 300;
+constexpr size_t BEST_CNT = 2;
+
+thread_local std::mt19937 gen{0};
+//thread_local std::mt19937 gen{std::random_device{}()};
 
 uint8_t specimen[SPEC_CNT][SZ];
 size_t best_spec[BEST_CNT][SZ];
@@ -26,7 +38,7 @@ void dump_best() {
   printf("   Dumping step %i\r", step); fflush(stdout);
   for (size_t i = 0; i < 1; i++) {
     char fname[256] = {0};
-    sprintf(fname, "out\\best_%.6i_%.2i.raw", step, i);
+    sprintf(fname, "out/best_%.6i_%.2i.raw", step, i);
     FILE *f = fopen(fname, "wb");
     fwrite(specimen[best[i]], SZ, 1, f);
     fclose(f);
@@ -70,7 +82,7 @@ struct scores_st {
 
 int score_sort_fnc(const void *a, const void *b) {
   const scores_st *sa = (const scores_st*)a;
-  const scores_st *sb = (const scores_st*)b;  
+  const scores_st *sb = (const scores_st*)b;
 
   if (sa->score > sb->score) {
     return 1;
@@ -112,9 +124,7 @@ void cross() {
 int main(void) {
   // srand(time(NULL));
 
-  FILE *f = fopen("mona_small_gray.raw", "rb");
-  fread(monalisa, SZ, 1, f);
-  fclose(f);
+
 
   for (;; step++) {
     //puts("Stage 1");

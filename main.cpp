@@ -6,8 +6,85 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <future>
+#include <list>
+#include <mutex>
 #include <random>
+#include <thread>
+#include <vector>
 
+template<typename R>
+class poor_mans_thread_pool
+{
+public:
+  poor_mans_thread_pool(size_t num_threads):
+    finished{false}
+  {
+    threads.reserve(num_threads);
+    for(size_t i = 0; i < num_threads; ++i) {
+      threads.emplace_back([this]{  do_work(); });
+    }
+  }
+
+  ~poor_mans_thread_pool() {
+    quit();
+  }
+
+  template<typename T>
+  auto add_task(T&& t) {
+    std::future<R> fut;
+    {
+      std::lock_guard<std::mutex> lock{sync};
+      tasks.emplace_back(t);
+      fut = tasks.back().get_future();
+    }
+    cv.notify_one();
+    return fut;
+  }
+
+  void quit() {
+    finished = true;
+    cv.notify_all();
+    for(auto& t : threads)
+      t.join();
+  }
+
+private:
+
+  void do_work() {
+    while(true) {
+
+      std::list<task_t> task;
+
+      {
+        std::unique_lock<std::mutex> lock{sync};
+        cv.wait(lock, [this]{
+          return tasks.size() || finished;
+        });
+        if(tasks.size())
+          task.splice(task.end(), tasks, tasks.begin());
+      }
+
+      if(task.size()) {
+        task.front()();
+      } else {
+        return;
+      }
+
+    }
+  }
+
+  using task_t = std::packaged_task<R()>;
+
+  std::atomic_bool finished;
+  std::condition_variable cv;
+  std::mutex sync;
+  std::list<task_t> tasks;
+  std::vector<std::thread> threads;
+};
+
+static poor_mans_thread_pool<void>* tp = nullptr;
 
 constexpr int W = 256;
 constexpr int H = 382;
@@ -95,10 +172,19 @@ struct scores_st {
 void score() {
   static scores_st scores[SPEC_CNT];
 
+  static std::array<std::future<void>, SPEC_CNT> futs;
+
   for (size_t i = 0; i < SPEC_CNT; i++) {
     scores[i].idx = i;
-    scores[i].score = calc_score(specimens[i]);
+//    scores[i].score = calc_score(specimens[i]);
+
+//    futs[i] = tp.add_task([&]{ scores[i].score = calc_score(specimens[i]); });
+    futs[i] = tp->add_task([&sc = scores[i], &spec = specimens[i]]{
+      sc.score = calc_score(spec);
+    });
   }
+
+  for(auto const& f : futs) f.wait();
 
   std::sort(std::begin(scores), std::end(scores), [](auto const& l, auto const& r){
     return l.score < r.score;
@@ -122,10 +208,11 @@ void cross() {
 
 int main(void) {
   // srand(time(NULL));
+  poor_mans_thread_pool<void> pool(std::thread::hardware_concurrency());
+  tp = &pool;
 
 
-
-  for (;; step++) {
+  for (;step < 10000; step++) {
     //puts("Stage 1");
     mutate();
 

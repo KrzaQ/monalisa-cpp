@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <time.h>
 
+#include <algorithm>
 #include <array>
 #include <random>
+
 
 constexpr int W = 256;
 constexpr int H = 382;
@@ -85,21 +87,6 @@ struct scores_st {
   size_t idx;
 };
 
-int score_sort_fnc(const void *a, const void *b) {
-  const scores_st *sa = (const scores_st*)a;
-  const scores_st *sb = (const scores_st*)b;
-
-  if (sa->score > sb->score) {
-    return 1;
-  }
-
-  if (sa->score < sb->score) {
-    return -1;
-  }  
-
-  return 0;
-}
-
 void score() {
   static scores_st scores[SPEC_CNT];
 
@@ -108,7 +95,9 @@ void score() {
     scores[i].score = score_me(specimen[i]);
   }
 
-  qsort(scores, SPEC_CNT, sizeof(scores_st), score_sort_fnc);
+  std::sort(std::begin(scores), std::end(scores), [](auto const& l, auto const& r){
+    return l.score < r.score;
+  });
 
   for (size_t i = 0; i < BEST_CNT; i++) {
     best[i] = scores[i].idx;

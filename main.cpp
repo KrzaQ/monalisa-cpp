@@ -7,9 +7,9 @@
 #include <array>
 #include <random>
 
-constexpr size_t W = 256;
-constexpr size_t H = 382;
-constexpr size_t SZ = W * H;
+constexpr int W = 256;
+constexpr int H = 382;
+constexpr int SZ = W * H;
 
 const auto monalisa = []{
   std::array<uint8_t, SZ> ret;
@@ -24,6 +24,11 @@ constexpr size_t BEST_CNT = 2;
 
 thread_local std::mt19937 gen{0};
 //thread_local std::mt19937 gen{std::random_device{}()};
+
+template<typename T>
+T random(T min, T max) {
+  return std::uniform_int_distribution<T>{min, max}(gen);
+}
 
 uint8_t specimen[SPEC_CNT][SZ];
 size_t best_spec[BEST_CNT][SZ];
@@ -47,11 +52,11 @@ void dump_best() {
 
 void mutate() {
   for (size_t i = 0; i < SPEC_CNT; i++) {
-    int x = rand() % (W - 1);
-    int y = rand() % (H - 1);
-    int w = rand() % (W - x - 1) + 1;
-    int h = rand() % (H - y - 1) + 1;
-    int c = rand() & 0xff;
+    int x = random<int>(0, W - 2);
+    int y = random<int>(0, H - 2);
+    int w = random<int>(1, W - x - 1);
+    int h = random<int>(1, H - y - 1);
+    int c = random<uint8_t>(0, 255);
 
     for (int n = y; n < y + h; n++) {
       for (int m = x; m < x + w; m++) {

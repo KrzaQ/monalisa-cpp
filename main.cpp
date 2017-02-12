@@ -85,6 +85,7 @@ private:
 };
 
 static poor_mans_thread_pool<void>* tp = nullptr;
+static poor_mans_thread_pool<void>* tp4 = nullptr;
 
 constexpr int W = 256;
 constexpr int H = 382;
@@ -135,13 +136,14 @@ void dump_best() {
 }
 
 void mutate() {
-//  for (size_t i = 0; i < SPEC_CNT; i++) {
-  for(specimen& s : specimens) {
+  static std::array<std::future<void>, SPEC_CNT> futs;
+
+  auto mutate_specimen = [](specimen& s){
     int x = random<int>(0, W - 2);
     int y = random<int>(0, H - 2);
     int w = random<int>(1, W - x - 1);
     int h = random<int>(1, H - y - 1);
-    int c = random<uint8_t>(0, 255);
+    int c = random<int>(0, 255);
 
     for (int n = y; n < y + h; n++) {
       for (int m = x; m < x + w; m++) {
@@ -149,7 +151,19 @@ void mutate() {
           (s[n * W + m] + c) >> 1;
       }
     }
+  };
+
+  for(size_t i{}; i < SPEC_CNT; ++i) {
+    futs[i] = tp4->add_task([i, &mutate_specimen]{ mutate_specimen(specimens[i]); });
+//    mutate_specimen(specimens[i]);
   }
+
+//  for(specimen& s : specimens) {
+//    futs[&s - &specimens[0]] = tp->add_task([&s]{
+
+//    });
+//  }
+  for(auto const& f : futs) f.wait();
 }
 
 double calc_score(specimen const& s) {
@@ -197,12 +211,25 @@ void score() {
 }
 
 void cross() {
+
+  static std::array<std::future<void>, std::max(BEST_CNT, SPEC_CNT)> futs;
+
   for (size_t i = 0; i < BEST_CNT; i++) {
-    memcpy(best_spec[i].data(), specimens[best_indices[i]].data(), SZ);
+    futs[i] = tp4->add_task([i]{
+      memcpy(best_spec[i].data(), specimens[best_indices[i]].data(), SZ);
+    });
+  }
+  for (size_t i = 0; i < BEST_CNT; i++) {
+    futs[i].wait();
   }
 
   for (size_t i = BEST_CNT; i < SPEC_CNT; i++) {
-    memcpy(specimens[i].data(), best_spec[i % BEST_CNT].data(), SZ);
+    futs[i] = tp4->add_task([i]{
+      memcpy(specimens[i].data(), best_spec[i % BEST_CNT].data(), SZ);
+    });
+  }
+  for (size_t i = BEST_CNT; i < SPEC_CNT; i++) {
+    futs[i].wait();
   }
 }
 
@@ -210,9 +237,11 @@ int main(void) {
   // srand(time(NULL));
   poor_mans_thread_pool<void> pool(std::thread::hardware_concurrency());
   tp = &pool;
+  poor_mans_thread_pool<void> pool4(std::thread::hardware_concurrency()/2);
+  tp4 = &pool4;
 
 
-  for (;step < 10000; step++) {
+  for (;step < 1000; step++) {
     //puts("Stage 1");
     mutate();
 

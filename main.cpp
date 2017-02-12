@@ -23,7 +23,7 @@ public:
   {
     threads.reserve(num_threads);
     for(size_t i = 0; i < num_threads; ++i) {
-      threads.emplace_back([this]{  do_work(); });
+      threads.emplace_back([this]{ do_work(); });
     }
   }
 
@@ -85,7 +85,7 @@ private:
 };
 
 static poor_mans_thread_pool<void>* tp = nullptr;
-static poor_mans_thread_pool<void>* tp4 = nullptr;
+static poor_mans_thread_pool<void>* tp_half = nullptr;
 
 constexpr int W = 256;
 constexpr int H = 382;
@@ -99,7 +99,7 @@ const auto monalisa = []{
   return ret;
 }();
 
-constexpr size_t SPEC_CNT = 300;
+constexpr size_t SPEC_CNT = 40;
 constexpr size_t BEST_CNT = 2;
 
 static thread_local std::mt19937 gen{0};
@@ -154,15 +154,9 @@ void mutate() {
   };
 
   for(size_t i{}; i < SPEC_CNT; ++i) {
-    futs[i] = tp4->add_task([i, &mutate_specimen]{ mutate_specimen(specimens[i]); });
-//    mutate_specimen(specimens[i]);
+    futs[i] = tp_half->add_task([i, &mutate_specimen]{ mutate_specimen(specimens[i]); });
   }
 
-//  for(specimen& s : specimens) {
-//    futs[&s - &specimens[0]] = tp->add_task([&s]{
-
-//    });
-//  }
   for(auto const& f : futs) f.wait();
 }
 
@@ -190,9 +184,7 @@ void score() {
 
   for (size_t i = 0; i < SPEC_CNT; i++) {
     scores[i].idx = i;
-//    scores[i].score = calc_score(specimens[i]);
 
-//    futs[i] = tp.add_task([&]{ scores[i].score = calc_score(specimens[i]); });
     futs[i] = tp->add_task([&sc = scores[i], &spec = specimens[i]]{
       sc.score = calc_score(spec);
     });
@@ -215,7 +207,7 @@ void cross() {
   static std::array<std::future<void>, std::max(BEST_CNT, SPEC_CNT)> futs;
 
   for (size_t i = 0; i < BEST_CNT; i++) {
-    futs[i] = tp4->add_task([i]{
+    futs[i] = tp_half->add_task([i]{
       memcpy(best_spec[i].data(), specimens[best_indices[i]].data(), SZ);
     });
   }
@@ -224,7 +216,7 @@ void cross() {
   }
 
   for (size_t i = BEST_CNT; i < SPEC_CNT; i++) {
-    futs[i] = tp4->add_task([i]{
+    futs[i] = tp_half->add_task([i]{
       memcpy(specimens[i].data(), best_spec[i % BEST_CNT].data(), SZ);
     });
   }
@@ -234,14 +226,15 @@ void cross() {
 }
 
 int main(void) {
-  // srand(time(NULL));
   poor_mans_thread_pool<void> pool(std::thread::hardware_concurrency());
+//  poor_mans_thread_pool<void> pool(1);
   tp = &pool;
-  poor_mans_thread_pool<void> pool4(std::thread::hardware_concurrency()/2);
-  tp4 = &pool4;
+  poor_mans_thread_pool<void> pool_half(std::thread::hardware_concurrency()/2);
+//  poor_mans_thread_pool<void> pool_half(1);
+  tp_half = &pool_half;
 
 
-  for (;step < 1000; step++) {
+  for (;/*step < 1000*/; step++) {
     //puts("Stage 1");
     mutate();
 
@@ -251,7 +244,7 @@ int main(void) {
     // Dump best.
     //puts("Stage 3");
     cross();
-    dump_best();    
+    dump_best();
 
     ///break;
   }
